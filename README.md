@@ -9,79 +9,70 @@ Con clave de administración (la clave nunca va en el código):
 - PowerShell: `$env:ADMIN_KEY="tu_clave"; npm start`
 - Mac/Linux: `ADMIN_KEY=tu_clave npm start`
 
-La terminal imprime la dirección local y la del Wi-Fi. Sin `DATA_FILE`, los datos se guardan en `data.json` junto a `server.js` (está en `.gitignore`).
+La terminal imprime la dirección local y la del Wi-Fi. Sin `DATABASE_URL` ni `DATA_FILE`, los datos se guardan en `data.json` junto a `server.js` (está en `.gitignore`). `npm install` solo hace falta si usas `DATABASE_URL` (instala `pg`).
 
-## Despliegue en Render con disco persistente
-**Requisito:** el Persistent Disk solo existe en servicios **de pago** (no en el plan gratis). Revisa precios actuales en render.com. Un servicio con disco es de **una sola instancia** y cada redeploy tiene una breve interrupción (no hay despliegues sin caída).
+## Despliegue GRATIS: Render (gratis) + Neon (base de datos gratis)
+Los datos se guardan en una base de datos Postgres externa (Neon), así que **sobreviven** cuando el servicio de Render se duerme, se reinicia o se vuelve a desplegar. Todo gratis, sin tarjeta.
 
-### 1. Crear el Web Service
-1. Sube el proyecto a GitHub (sin los archivos de la sección "No subir").
-2. Render → **New → Web Service** → conecta el repositorio.
-3. Configura:
+### 1. Crear la base de datos en Neon
+1. Entra a **neon.com**, crea una cuenta (puedes usar GitHub) y crea un proyecto (nombre libre, región cercana a la de Render).
+2. En el panel del proyecto toca **Connect** / **Connection string** y copia la cadena (empieza con `postgresql://` e incluye usuario, contraseña y `sslmode=require`).
+3. Esa cadena es un **secreto**: no la pegues en GitHub, README ni en ningún archivo. Solo va en Render (paso 2).
+No hay que crear tablas: el servidor crea la suya solo la primera vez.
+
+### 2. Crear el Web Service en Render
+Render → **New → Web Service** → conecta tu repositorio de GitHub.
 
 | Campo | Valor |
 |---|---|
 | Language / Runtime | Node |
-| Branch | la rama que usas (p. ej. `main`) |
 | Root Directory | vacío (o la subcarpeta si `server.js` no está en la raíz del repo) |
 | Build Command | `npm install` |
 | Start Command | `npm start` |
-| Instance Type | un plan de **pago** (necesario para el disco) |
-| Health Check Path | `/health` (debe responder `{"ok":true}`) |
+| Instance Type | Free |
+| Health Check Path | `/health` (en *Advanced*) |
 
-### 2. Variables de entorno (Environment)
+**Environment Variables:**
 | Variable | Valor |
 |---|---|
-| `ADMIN_KEY` | una clave larga y propia (solo aquí, nunca en GitHub, frontend ni README) |
-| `DATA_FILE` | `/data/data.json` |
+| `ADMIN_KEY` | una clave larga y propia |
+| `DATABASE_URL` | la cadena de conexión de Neon (pégala tal cual, sin comillas) |
 
-`PORT` la pone Render sola; no la definas.
+No definas `DATA_FILE` ni agregues disco (solo se usan sin `DATABASE_URL`). `PORT` la pone Render.
 
-### 3. Montar el Persistent Disk
-En el servicio → **Disks → Add Disk**:
-- **Name:** `cobaeh-data` (cualquiera)
-- **Mount Path:** `/data`   ← exactamente esto, debe coincidir con `DATA_FILE`
-- **Size:** 1 GB es suficiente (los datos son JSON pequeño)
-
-Solo lo que se escribe bajo `/data` sobrevive a reinicios y redeploys. Añadir el disco provoca un redeploy. El disco solo está disponible mientras el servicio corre (no durante el build).
-Al arrancar, el servidor imprime en los Logs `Datos: /data/data.json`. Si ves `⚠ /data no parece un disco persistente montado`, el disco no está montado en `/data`: corrige el Mount Path **antes** de usar la página.
-
-### 4. Comprobar
-- `https://TU-SERVICIO.onrender.com/health` → `{"ok":true}`
-- Abre la URL desde el celular con datos móviles: crea cuenta, publica una idea, comenta, responde una encuesta.
+### 3. Comprobar
+- Logs de Render: debe decir `Datos: base de datos Postgres` y nada con `✖`.
+- `https://TU-SERVICIO.onrender.com/health` → `{"ok":true}`.
+- Desde el celular con datos móviles: crea una cuenta, publica una idea.
 - ⋮ → Administración → `ADMIN_KEY` → **Descargar respaldo**.
 
-### 5. Migrar tus datos locales (opcional)
-Si tus `data.json` actuales son solo de pruebas, lo más limpio es **empezar vacío** y no migrar nada. Si quieres conservarlos:
-1. Servicio → Settings → **SSH**: agrega tu llave pública (Render documenta cómo; requiere servicio de pago).
-2. Copia el archivo al disco con otro nombre (nunca directo sobre `data.json`):
-   `scp -s data.json TU_SERVICIO@ssh.TU_REGION.render.com:/data/incoming.json`
-3. En el **Shell** del servicio (o por SSH), dentro de la carpeta del proyecto:
-   `node migrate.js /data/incoming.json /data/data.json`
-   - Si ya existe `/data/data.json` **NO lo sobrescribe** y te lo dice. Solo con `--force` lo reemplaza, guardando antes una copia `data.json.bak-FECHA`.
-   - Valida que el origen sea un JSON de esta aplicación antes de tocar nada.
-4. **Reinicia el servicio** (Manual Deploy → Restart) para que cargue los datos. Hazlo antes de que alguien use la página: un servidor en marcha mantiene sus datos en memoria y podría pisar el archivo recién migrado.
-5. Borra `/data/incoming.json`.
+### 4. Comprobar que los datos sobreviven
+1. Crea una cuenta de prueba y una idea.
+2. Render → **Manual Deploy → Restart service** (o espera ~15 min sin visitas a que se duerma).
+3. Abre la página otra vez (la primera visita tarda hasta ~1 minuto en despertar) y entra con la misma cuenta y PIN: la cuenta y la idea deben seguir ahí.
 
-### 6. Comprobar que los datos sobreviven a un reinicio
-1. Crea una cuenta de prueba, publica una idea y comenta. Descarga un respaldo y anota cuántos usuarios/ideas hay (Resultados).
-2. Render → **Manual Deploy → Restart service** (y luego prueba también *Deploy latest commit*).
-3. Espera a que `/health` responda. Entra con la misma cuenta y PIN: deben seguir tu cuenta, la idea y el comentario, y los números de Resultados deben ser iguales.
-4. En los Logs debe aparecer otra vez `Datos: /data/data.json` sin avisos `⚠`.
+### Cosas que debes saber (plan gratis)
+- **El servicio se duerme tras ~15 min sin visitas** y la primera persona espera cerca de un minuto. Ábrelo tú unos minutos antes de la presentación o conferencia. Los datos no se pierden.
+- Neon gratis: 0.5 GB (de sobra) y su cómputo se suspende tras 5 min sin uso; despierta solo en una fracción de segundo.
+- Si no se puede conectar a la base al arrancar, el servidor **se detiene** (con un mensaje claro) en vez de empezar vacío: así nunca pisa datos buenos.
+- Si la base se cae un momento con la página en marcha, la página sigue funcionando y los cambios pendientes se guardan solos cuando vuelve.
+- **Descarga un respaldo** (Administración) antes de presentar y al terminar: es tu copia propia.
+
+### Migrar tus datos locales a Neon (opcional)
+Si tus `data.json` actuales son solo de pruebas, empieza vacío. Si quieres conservarlos: en tu computadora, en la carpeta del proyecto, con `npm install` hecho y la cadena de Neon:
+- CMD: `set "DATABASE_URL=la_cadena_de_neon" && node migrate.js data.json --db`
+- PowerShell: `$env:DATABASE_URL="la_cadena_de_neon"; node migrate.js data.json --db`
+No sobrescribe una base que ya tenga datos; con `--force` la reemplaza guardando antes una copia `db-backup-FECHA.json`. Reinicia el servicio después.
+
+### Alternativa de pago: disco persistente
+En un plan de pago de Render puedes usar un **Persistent Disk** en vez de Neon: Disks → Add Disk con Mount Path `/data`, variable `DATA_FILE=/data/data.json` y sin `DATABASE_URL`. Los datos se guardan en ese archivo. `migrate.js <origen> /data/data.json` copia datos de forma segura sin sobrescribir.
 
 ### No subir a GitHub
-`data.json` y sus copias (`data.json.*`, `*.bak*`), respaldos `backup-*.json`, `.env`, `node_modules/` y cualquier archivo con tu `ADMIN_KEY`. Ya están en `.gitignore`. La `ADMIN_KEY` solo vive en las variables de entorno de Render.
-
-## Moderación: nombre real y bloqueo de cuentas
-- Al crear cuenta se pide **alias** (público) y **nombre y primer apellido** (solo lo ve Administración). Los alumnos nunca ven el nombre real; el inicio de sesión sigue siendo alias + grupo + PIN.
-- En Administración → **Usuarios**: nombre real, grupo, número de ideas y comentarios, **Historial** de cada alumno y botón **Bloquear / Desbloquear**.
-- Un usuario bloqueado no puede iniciar sesión, publicar, comentar, apoyar ni votar, y tampoco crear otra cuenta con el mismo nombre real y grupo.
-- Las cuentas creadas antes de este cambio no tienen nombre real (aparece "—").
-- Los respaldos incluyen los nombres reales: guárdalos en un lugar privado.
+`data.json` y sus copias, respaldos (`backup-*.json`, `db-backup-*.json`), `.env`, `node_modules/` y cualquier archivo con tu `ADMIN_KEY` o tu cadena de Neon. Ya están en `.gitignore`.
 
 ## Seguridad de los datos
-- El servidor **no sobrescribe datos ilegibles**: si `DATA_FILE` existe pero está corrupto, se detiene con un mensaje claro en vez de empezar vacío.
-- Escrituras agrupadas (250 ms), atómicas (archivo temporal + reemplazo) y vaciadas al apagar (SIGTERM/Ctrl+C).
+- El servidor **no sobrescribe datos ilegibles**: si `DATA_FILE` está corrupto o la base de datos no responde al arrancar, se detiene con un mensaje claro en vez de empezar vacío.
+- Escrituras agrupadas (250 ms), vaciadas al apagar (SIGTERM/Ctrl+C); en archivo son atómicas (temporal + reemplazo) y en Postgres se guardan en una sola fila.
 - PIN: solo hash (scrypt), nunca se devuelve ni se muestra. Los tokens de sesión nunca salen del servidor.
 
 ## Respaldo manual

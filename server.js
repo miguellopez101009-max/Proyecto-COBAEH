@@ -9,18 +9,29 @@ const DEFAULT_GROUPS=['1101','1102','1103','3101','3102','3103','5101','5102','5
 const BAD='puto puta putos putas pendejo pendeja pendejos pendejas pendejada cabron cabrona cabrones chingar chingada chingado chingados chinga chingas chingatumadre verga vergas mierda culero culera culeros culo marica maricon maricones joto jotos idiota idiotas imbecil estupido estupida mamada mamadas mames puneta hijueputa hdp ctm'.split(' ');
 let db={users:[],ideas:[],comments:[],evidence:[],albums:[],activities:[],answers:[],badWords:[],stats:{waste_kg:null,areas:null},groups:DEFAULT_GROUPS.slice(),
  surveys:[{id:'s1',question:'¿Qué área del plantel consideras que necesita más atención?',type:'single',options:OPTIONS,hidden:false}]};
-if(fs.existsSync(DB)){try{const raw=fs.readFileSync(DB,'utf8');if(raw.trim()){const j=JSON.parse(raw);if(!j.comments)fs.copyFileSync(DB,DB+'.bak-v1'); // respaldo antes de migrar a V1.5
- db=Object.assign(db,j)}}catch(e){console.error('\n✖ No se pudo leer '+DB+' ('+e.message+').\n  Para NO sobrescribir tus datos, el servidor se detiene. Revisa o restaura ese archivo.\n');process.exit(1)}}
-db.groups=[...new Set([...(db.groups||[]),...DEFAULT_GROUPS])].sort();
-if(db.survey&&!db.answers.length){db.answers=db.survey.map(s=>({...s,surveyId:'s1'}));delete db.survey}
-db.comments=db.comments||[];db.badWords=db.badWords||[];db.surveys.forEach(s=>s.type=s.type||'single'); // migración: encuestas antiguas = opción única
-try{fs.mkdirSync(path.dirname(DB),{recursive:true})}catch{} // permite DATA_FILE=/data/data.json aunque la carpeta aún no exista
-let dirty=false,timer=null; // las escrituras se agrupan (250 ms) y se vacían al apagar el servidor; el archivo se reemplaza de forma atómica
-const flush=()=>{if(timer){clearTimeout(timer);timer=null}if(!dirty)return;dirty=false;const j=JSON.stringify(db),t=DB+'.tmp';fs.writeFileSync(t,j);try{fs.renameSync(t,DB)}catch{fs.writeFileSync(DB,j)}};
-function storageWarn(){const prod=process.env.RENDER||process.env.NODE_ENV==='production';if(!process.env.DATA_FILE)return prod?'\n  ⚠ DATA_FILE no definido: en un hosting los datos se perderán al reiniciar':'';
+const DATABASE_URL=process.env.DATABASE_URL||'';let pool=null; // con DATABASE_URL (p. ej. Neon) los datos viven en Postgres; sin ella, en un archivo (DATA_FILE)
+const normalize=()=>{db.groups=[...new Set([...(db.groups||[]),...DEFAULT_GROUPS])].sort();
+ if(db.survey&&!db.answers.length){db.answers=db.survey.map(s=>({...s,surveyId:'s1'}));delete db.survey}
+ db.comments=db.comments||[];db.badWords=db.badWords||[];db.surveys.forEach(s=>s.type=s.type||'single')}; // migraciones: encuestas antiguas = opción única
+async function loadData(){
+ if(DATABASE_URL){const {Pool}=require('pg');pool=new Pool({connectionString:DATABASE_URL,max:4,connectionTimeoutMillis:15000,idleTimeoutMillis:30000});pool.on('error',e=>console.error('⚠ Base de datos:',e.message));let last;
+  for(let i=0;i<4;i++){try{await pool.query('CREATE TABLE IF NOT EXISTS app_state(id int PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())');
+   const r=await pool.query('SELECT data FROM app_state WHERE id=1');if(r.rows[0])db=Object.assign(db,r.rows[0].data);normalize();return}catch(e){last=e;await new Promise(o=>setTimeout(o,2000*(i+1)))}}
+  console.error('\n✖ No se pudo conectar con la base de datos ('+last.message+').\n  Para NO sobrescribir datos, el servidor se detiene. Revisa DATABASE_URL.\n');process.exit(1)}
+ if(fs.existsSync(DB)){try{const raw=fs.readFileSync(DB,'utf8');if(raw.trim()){const j=JSON.parse(raw);if(!j.comments)fs.copyFileSync(DB,DB+'.bak-v1'); // respaldo antes de migrar a V1.5
+  db=Object.assign(db,j)}}catch(e){console.error('\n✖ No se pudo leer '+DB+' ('+e.message+').\n  Para NO sobrescribir tus datos, el servidor se detiene. Revisa o restaura ese archivo.\n');process.exit(1)}}
+ normalize();try{fs.mkdirSync(path.dirname(DB),{recursive:true})}catch{}} // permite DATA_FILE=/data/data.json aunque la carpeta aún no exista
+// Guardado: las escrituras se agrupan (250 ms); archivo = atómico (temporal + reemplazo); Postgres = una fila con todo el estado. Se vacía al apagar.
+let dirty=false,timer=null,flushing=null;
+const writeFile=()=>{const j=JSON.stringify(db),t=DB+'.tmp';fs.writeFileSync(t,j);try{fs.renameSync(t,DB)}catch{fs.writeFileSync(DB,j)}};
+const flush=()=>{if(timer){clearTimeout(timer);timer=null}if(flushing)return flushing;if(!dirty)return Promise.resolve();dirty=false;
+ flushing=(async()=>{try{if(pool)await pool.query('INSERT INTO app_state(id,data,updated_at) VALUES(1,$1::jsonb,now()) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=now()',[JSON.stringify(db)]);else writeFile()}
+  catch(e){dirty=true;console.error('⚠ No se pudo guardar (se reintentará):',e.message);if(!timer)timer=setTimeout(flush,5000)}finally{flushing=null;if(dirty&&!timer)timer=setTimeout(flush,250)}})();return flushing};
+const drain=async()=>{for(let i=0;i<6&&(dirty||flushing);i++){if(timer){clearTimeout(timer);timer=null}await flush()}};
+function storageWarn(){if(DATABASE_URL)return '';const prod=process.env.RENDER||process.env.NODE_ENV==='production';if(!process.env.DATA_FILE)return prod?'\n  ⚠ Sin DATABASE_URL ni DATA_FILE: en un hosting los datos se perderán al reiniciar':'';
  try{if(process.env.RENDER&&fs.statSync(path.dirname(DB)).dev===fs.statSync('/').dev)return '\n  ⚠ '+path.dirname(DB)+' no parece un disco persistente montado: los datos se perderían al reiniciar (revisa Disks → Mount Path)'}catch{}return ''}
 const save=()=>{dirty=true;if(!timer)timer=setTimeout(flush,250)};
-['SIGTERM','SIGINT'].forEach(g=>process.on(g,()=>{try{flush()}catch{}process.exit(0)}));process.on('exit',()=>{try{flush()}catch{}});
+['SIGTERM','SIGINT'].forEach(g=>process.on(g,async()=>{try{await drain()}catch{}process.exit(0)}));process.on('exit',()=>{if(!pool&&dirty)try{writeFile()}catch{}});
 const id=()=>crypto.randomBytes(6).toString('hex'),clean=s=>String(s||'').replace(/[<>]/g,'').replace(/\s+/g,' ').trim();
 const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim(),squash=w=>w.replace(/(.)\1+/g,'$1');
 const LEET={0:'o',1:'i',3:'e',4:'a',5:'s',7:'t','@':'a','$':'s'};
@@ -31,7 +42,6 @@ const fails={},RL={};
 // Límites (ventana fija). La IP se comparte en una escuela, así que su tope es muy alto: el control real es por usuario y por acción.
 const LIM={ipFlood:[3000,6e4],reg:[600,6e4],login:[600,6e4],userWrites:[60,6e4],idea:[3,6e4],support:[30,6e4],survey:[20,6e4]};
 const rl=(key,[max,ms])=>{const n=Date.now(),e=RL[key];if(!e||n>e.t+e.ms){RL[key]={n:1,t:n,ms};return false}return ++e.n>max};
-const BANMSG='Tu cuenta fue suspendida por el equipo del proyecto. Habla con ellos para resolverlo.';
 const TOO_FAST='Vas muy rápido. Espera un momento e inténtalo de nuevo.';
 setInterval(()=>{const n=Date.now();for(const k in RL)if(n>RL[k].t+RL[k].ms)delete RL[k];for(const k in fails){fails[k]=fails[k].filter(t=>n-t<6e5);if(!fails[k].length)delete fails[k]}},3e5).unref();
 const locked=(k,max=5)=>{const n=Date.now();fails[k]=(fails[k]||[]).filter(t=>n-t<6e5);return fails[k].length>=max};
@@ -59,32 +69,28 @@ function state(r){const u=user(r),who=i=>{const x=db.users.find(x=>x.id===i);ret
 async function route(r,m,p,b){let x;
  if(m==='GET'&&p==='/api/health')return{ok:true,admin:!!ADMIN_KEY};
  if(m==='GET'&&p==='/api/state')return state(r);
- if(m==='POST'&&p==='/api/register'){if(rl('reg|'+ipOf(r),LIM.reg))throw new E('Muchos registros desde esta red. Espera un momento.',429);const name=clean(b.name),real=clean(b.real),g=clean(b.group),pin=String(b.pin||'');
+ if(m==='POST'&&p==='/api/register'){if(rl('reg|'+ipOf(r),LIM.reg))throw new E('Muchos registros desde esta red. Espera un momento.',429);const name=clean(b.name),g=clean(b.group),pin=String(b.pin||'');
   if(name.length<2||name.length>30)throw new E('El nombre o alias debe tener de 2 a 30 caracteres.');
   if(!db.groups.includes(g))throw new E('Selecciona un grupo de la lista.');
   if(!/^\d{4}$/.test(pin))throw new E('El PIN debe tener exactamente 4 dígitos.');
   if(bad(name))throw new E('El nombre o alias contiene lenguaje no permitido.');
-  if(real.length<5||real.length>40||real.split(' ').length<2||!/^[\p{L}][\p{L}\s.'-]*$/u.test(real))throw new E('Escribe tu nombre real y tu primer apellido (solo lo ve el equipo del proyecto).');
-  if(bad(real))throw new E('El nombre real contiene lenguaje no permitido.');
-  if(db.users.some(x=>x.banned&&x.real&&norm(x.real)===norm(real)&&x.group===g))throw new E('No se puede crear una cuenta con esos datos. Habla con el equipo del proyecto.',403);
   const ex=db.users.find(u=>ukey(u)===norm(name)+'|'+g);
   if(ex)throw new E(ex.pin?'Ya existe una cuenta con ese nombre y grupo. Usa "Iniciar sesión" con tu PIN.':'Esa cuenta ya existe y aún no tiene PIN. Entra desde el dispositivo donde la creaste para protegerla.',409);
   const salt=crypto.randomBytes(8).toString('hex'),ph=await hashPin(pin,salt);
   if(db.users.some(u=>ukey(u)===norm(name)+'|'+g))throw new E('Ya existe una cuenta con ese nombre y grupo. Usa "Iniciar sesión" con tu PIN.',409); // revisa de nuevo tras esperar el cifrado
-  const u={id:id(),token:crypto.randomBytes(16).toString('hex'),name,real,group:g,date:new Date().toISOString(),salt,pin:ph};db.users.push(u);save();return session(u)}
+  const u={id:id(),token:crypto.randomBytes(16).toString('hex'),name,group:g,date:new Date().toISOString(),salt,pin:ph};db.users.push(u);save();return session(u)}
  if(m==='POST'&&p==='/api/login'){if(rl('login|'+ipOf(r),LIM.login))throw new E('Muchos intentos desde esta red. Espera un momento.',429);const name=clean(b.name),g=clean(b.group),k=norm(name)+'|'+g,ik='ip|'+ipOf(r);
   if(locked(k)||locked(ik,300))throw new E('Demasiados intentos. Espera 10 minutos.',429);
   const u=db.users.find(u=>ukey(u)===k);
   if(!(u&&u.pin&&await okPin(String(b.pin||''),u))){(fails[k]=fails[k]||[]).push(Date.now());(fails[ik]=fails[ik]||[]).push(Date.now());
    throw new E(u&&!u.pin?'Esa cuenta aún no tiene PIN. Entra desde el dispositivo donde la creaste.':'Nombre, grupo o PIN incorrectos.',403)}
-  delete fails[k];if(u.banned)throw new E(BANMSG,403);return session(u)}
+  delete fails[k];return session(u)}
  if(p.startsWith('/api/admin/')){const ak='adm|'+ipOf(r);if(locked(ak,10))throw new E('Demasiados intentos de clave. Espera 10 minutos.',429);
   if(!isAdmin(r)){(fails[ak]=fails[ak]||[]).push(Date.now());throw new E(ADMIN_KEY?'Clave incorrecta.':'ADMIN_KEY no está configurada en el servidor.',401)}
   if(m==='GET'&&p==='/api/admin/data')return{users:db.users.map(({token,pin,salt,...u})=>u),ideas:db.ideas.map(i=>({...i,supports:i.supports.length})),
    comments:db.comments.map(c=>({...c,idea:((db.ideas.find(i=>i.id===c.ideaId)||{}).text||'').slice(0,40)})),answers:db.answers,surveys:db.surveys.map(s=>({...s,respondents:answered(s.id).size})),
    evidence:db.evidence,albums:db.albums,activities:db.activities,groups:db.groups,stats:db.stats,badWords:db.badWords};
   if(m==='POST'&&(x=p.match(/^\/api\/admin\/(ideas|evidence|surveys|comments)\/(\w+)\/hide$/))){const it=db[x[1]].find(i=>i.id===x[2]);if(!it)throw new E('No existe',404);it.hidden=!it.hidden;save();return{hidden:it.hidden}}
-  if(m==='POST'&&(x=p.match(/^\/api\/admin\/users\/(\w+)\/ban$/))){const it=db.users.find(i=>i.id===x[1]);if(!it)throw new E('No existe',404);it.banned=!it.banned;save();return{banned:it.banned}}
   if(m==='POST'&&p==='/api/admin/stats'){for(const k of['waste_kg','areas']){if(b[k]===''||b[k]==null)db.stats[k]=null;else{const n=Number(b[k]);if(!(n>=0&&n<1e6))throw new E('Valor inválido: '+k);db.stats[k]=n}}save();return db.stats}
   if(m==='POST'&&p==='/api/admin/evidence'){if(!https(b.url))throw new E('La URL debe iniciar con https://');let album='';
    if(b.activity){const a=db.activities.find(a=>a.id===b.activity);if(!a)throw new E('Actividad no encontrada');if(!a.album||!db.albums.some(x=>x.id===a.album)){a.album=id();db.albums.push({id:a.album,name:a.name})}album=a.album}
@@ -103,7 +109,6 @@ async function route(r,m,p,b){let x;
   if(m==='DELETE'&&(x=p.match(/^\/api\/admin\/(evidence|albums|activities|comments)\/(\w+)$/))){db[x[1]]=db[x[1]].filter(e=>e.id!==x[2]);save();return{ok:1}}
   throw new E('No existe',404)}
  const u=user(r);if(!u)throw new E('Regístrate o inicia sesión primero en Inicio.',401);
- if(u.banned)throw new E(BANMSG,403);
  if(m==='POST'&&rl('uw|'+u.id,LIM.userWrites))throw new E(TOO_FAST,429);
  if(m==='POST'&&p==='/api/pin'){const pin=String(b.pin||'');if(u.pin)throw new E('Tu cuenta ya tiene PIN.');if(!/^\d{4}$/.test(pin))throw new E('El PIN debe tener exactamente 4 dígitos.');const sl=crypto.randomBytes(8).toString('hex'),ph=await hashPin(pin,sl);if(u.pin)throw new E('Tu cuenta ya tiene PIN.');u.salt=sl;u.pin=ph;save();return{ok:1}}
  if(m==='POST'&&p==='/api/ideas'){if(rl('idea|'+u.id,LIM.idea))throw new E(TOO_FAST,429);const t=clean(b.text);if(t.length<10||t.length>300)throw new E('La idea debe tener de 10 a 300 caracteres.');
@@ -126,7 +131,7 @@ async function route(r,m,p,b){let x;
   const d=new Date().toISOString();picks.forEach(o=>db.answers.push({surveyId:sid,userId:u.id,name:u.name,group:u.group,option:o,date:d}));save();return{ok:1}}
  throw new E('No existe',404)}
 const MIME={'.html':'text/html;charset=utf-8','.css':'text/css','.js':'text/javascript','.svg':'image/svg+xml','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg'};
-http.createServer((req,res)=>{const url=new URL(req.url,'http://x'),p=url.pathname;
+loadData().then(()=>http.createServer((req,res)=>{const url=new URL(req.url,'http://x'),p=url.pathname;
  const send=(c,o,h={})=>{res.writeHead(c,{'Content-Type':'application/json','X-Content-Type-Options':'nosniff',...h});res.end(JSON.stringify(o))};
  if(p==='/health')return send(200,{ok:true},{'Cache-Control':'no-store'});
  if(p==='/api/admin/backup'&&req.method==='GET'){const ak='adm|'+ipOf(req);if(locked(ak,10))return send(429,{error:'Demasiados intentos de clave. Espera 10 minutos.'});
@@ -139,4 +144,4 @@ http.createServer((req,res)=>{const url=new URL(req.url,'http://x'),p=url.pathna
  if(!f.startsWith(path.join(__dirname,'public')))return send(403,{});
  fs.readFile(f,(e,d)=>e?send(404,{error:'No encontrado'}):(res.writeHead(200,{'Content-Type':MIME[path.extname(f)]||'application/octet-stream','Cache-Control':'no-cache'}),res.end(d)))
 }).listen(PORT,'0.0.0.0',()=>{const ips=Object.values(require('os').networkInterfaces()).flat().filter(i=>i.family==='IPv4'&&!i.internal).map(i=>'http://'+i.address+':'+PORT);
- console.log('\nCOBAEH listo.\n  En esta computadora: http://localhost:'+PORT+'\n  En el celular (mismo Wi-Fi): '+(ips.join('  |  ')||'(no se detectó red)')+'\n'+'  Datos: '+DB+storageWarn()+'\n'+(ADMIN_KEY?'  Administración: activa':'  ⚠ Define ADMIN_KEY para activar Administración')+'\n')});
+ console.log('\nCOBAEH listo.\n  En esta computadora: http://localhost:'+PORT+'\n  En el celular (mismo Wi-Fi): '+(ips.join('  |  ')||'(no se detectó red)')+'\n'+'  Datos: '+(DATABASE_URL?'base de datos Postgres':DB)+storageWarn()+'\n'+(ADMIN_KEY?'  Administración: activa':'  ⚠ Define ADMIN_KEY para activar Administración')+'\n')}));
