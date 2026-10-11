@@ -7,7 +7,7 @@ const SEMESTERS=['1','3','5']; // añadir '2','4','6' cuando participen
 const OPTIONS=['Áreas verdes','Canchas','Salones','Baños','Pasillos','Otra'];
 const DEFAULT_GROUPS=['1101','1102','1103','3101','3102','3103','5101','5102','5103'];
 // Palabras bloqueadas base (el filtro es solo del backend). Se amplían desde Administración (db.badWords).
-const BAD='puto puta putos putas pendejo pendeja pendejos pendejas pendejada cabron cabrona cabrones chingar chingada chingado chingados chinga chingas chingatumadre verga vergas mierda culero culera culeros culo marica maricon maricones joto jotos idiota idiotas imbecil estupido estupida mamada mamadas mames puneta hijueputa hdp ctm'.split(' ');
+const BAD='puto puta putos putas pendejo pendeja pendejos pendejas pendejada cabron cabrona cabrones chingar chingada chingado chingados chinga chingas chingatumadre verga vergas mierda culero culera culeros culo marica maricon maricones joto jotos idiota idiotas imbecil estupido estupida mamada mamadas mames puneta hijueputa hdp ctm pinche pinches chingadera chingaderas putamadre putazo putita putito puteada putear putadas pendejadas mamon mamona mamones zorra zorras prostituta ojete ojetes cagada cagadas cagon maldito maldita malditos malparido malparida gonorrea joder jodete jodido jodida gilipollas huevon huevona tarado tarada retrasado retrasada vergudo vergazo chingues culera mierdas estupidos imbeciles'.split(' ');
 let db={users:[],ideas:[],comments:[],evidence:[],albums:[],activities:[],answers:[],badWords:[],stats:{waste_kg:null,areas:null},groups:DEFAULT_GROUPS.slice(),
  surveys:[{id:'s1',question:'¿Qué área del plantel consideras que necesita más atención?',type:'single',options:OPTIONS,hidden:false}]};
 const DATABASE_URL=process.env.DATABASE_URL||'';let pool=null; // con DATABASE_URL (p. ej. Neon) los datos viven en Postgres; sin ella, en un archivo (DATA_FILE)
@@ -91,20 +91,21 @@ function parseSurvey(b){const question=clean(b.question).slice(0,150),type=b.typ
   if(options.some(o=>o.length>60))throw new E('Cada opción debe tener máximo 60 caracteres.');if(new Set(options.map(norm)).size!==options.length)throw new E('Hay opciones repetidas.')}
  if(bad(question)||options.some(bad)||(labels&&Object.values(labels).some(bad)))throw new E(LANG);
  return{question,type,options,...(labels&&Object.keys(labels).length?{labels}:{})}}
-function results(s){const a=db.answers.filter(x=>x.surveyId===s.id),counts={};s.options.forEach(o=>counts[o]=0);a.forEach(x=>counts[x.option]=(counts[x.option]||0)+1);
- return{counts,total:answered(s.id).size,avg:s.type==='scale'&&a.length?Math.round(a.reduce((n,x)=>n+Number(x.option),0)/a.length*10)/10:null}} // total = personas (una participación por usuario, aunque elija varias opciones)
+function results(s){const sus=susIds(),a=db.answers.filter(x=>x.surveyId===s.id&&!sus.has(x.userId)),counts={};s.options.forEach(o=>counts[o]=0);a.forEach(x=>counts[x.option]=(counts[x.option]||0)+1);
+ return{counts,total:new Set(a.map(x=>x.userId)).size,avg:s.type==='scale'&&a.length?Math.round(a.reduce((n,x)=>n+Number(x.option),0)/a.length*10)/10:null}} // total = personas (una participación por usuario, aunque elija varias opciones)
 // Respaldo: todo lo necesario para restaurar. Sin ADMIN_KEY, variables de entorno ni tokens de sesión. Los PIN van solo como hash (pinHash/pinSalt): es un archivo PRIVADO.
 const backup=()=>({app:'cuidando-nuestro-cobaeh',backupVersion:1,createdAt:new Date().toISOString(),data:{users:db.users.map(({token,pin,salt,...u})=>({...u,pinHash:pin||null,pinSalt:salt||null})),ideas:db.ideas,comments:db.comments,surveys:db.surveys,answers:db.answers,activities:db.activities,albums:db.albums,evidence:db.evidence,stats:db.stats,groups:db.groups,badWords:db.badWords,seedsDone:db.seedsDone||[],schemaVersion:db.schemaVersion||SCHEMA}});
 const answered=s=>new Set(db.answers.filter(a=>a.surveyId===s).map(a=>a.userId));
-function state(r){const u=user(r),who=i=>{const x=db.users.find(x=>x.id===i);return x?{name:x.name,group:x.group}:null};
- const ideas=db.ideas.filter(i=>!i.hidden).sort((a,b)=>b.supports.length-a.supports.length||b.date.localeCompare(a.date)).map(i=>({id:i.id,name:i.name,group:i.group,text:i.text,date:i.date,
+const susIds=()=>new Set(db.users.filter(isSusp).map(u=>u.id)); // el contenido de cuentas suspendidas se oculta (y no cuenta) mientras dure la suspensión; al reactivar vuelve
+function state(r){const u=user(r),sus=susIds(),who=i=>{const x=db.users.find(x=>x.id===i);return x?{name:x.name,group:x.group}:null};
+ const ideas=db.ideas.filter(i=>!i.hidden&&!sus.has(i.userId)).map(i=>({...i,supports:i.supports.filter(x=>!sus.has(x))})).sort((a,b)=>b.supports.length-a.supports.length||b.date.localeCompare(a.date)).map(i=>({id:i.id,name:i.name,group:i.group,text:i.text,date:i.date,
   supports:i.supports.length,mine:!!u&&i.supports.includes(u.id),supporters:i.supports.map(who).filter(Boolean),
-  comments:db.comments.filter(c=>c.ideaId===i.id&&!c.hidden).map(c=>({id:c.id,name:c.name,group:c.group,text:c.text,date:c.date}))}));
+  comments:db.comments.filter(c=>c.ideaId===i.id&&!c.hidden&&!sus.has(c.userId)).map(c=>({id:c.id,name:c.name,group:c.group,text:c.text,date:c.date}))}));
  const surveys=db.surveys.filter(s=>!s.hidden).map(s=>({id:s.id,question:s.question,type:s.type,options:s.options,labels:s.labels||null,...results(s),voted:!!u&&answered(s.id).has(u.id)}));
  const ev=db.evidence.filter(e=>!e.hidden);
  return{me:u?{hasPin:!!u.pin,suspended:isSusp(u)}:null,groups:db.groups,ideas,surveys,albums:db.albums,activities:db.activities,evidence:ev,
-  stats:{participants:db.users.filter(live).length,ideas:ideas.length,ideasSupported:ideas.filter(i=>i.supports).length,supports:db.ideas.reduce((n,i)=>n+i.supports.length,0),comments:db.comments.filter(c=>!c.hidden).length,
-  answers:new Set(db.answers.map(a=>a.surveyId+'|'+a.userId)).size,activities:db.activities.filter(a=>a.status==='Realizada').length,evidence:ev.length,...db.stats}}}
+  stats:{participants:db.users.filter(u=>live(u)&&!isSusp(u)).length,ideas:ideas.length,ideasSupported:ideas.filter(i=>i.supports).length,supports:ideas.reduce((n,i)=>n+i.supports,0),comments:db.comments.filter(c=>!c.hidden&&!sus.has(c.userId)&&db.ideas.some(i=>i.id===c.ideaId&&!sus.has(i.userId))).length,
+  answers:new Set(db.answers.filter(a=>!sus.has(a.userId)).map(a=>a.surveyId+'|'+a.userId)).size,activities:db.activities.filter(a=>a.status==='Realizada').length,evidence:ev.length,...db.stats}}}
 async function route(r,m,p,b){let x;
  if(m==='GET'&&p==='/api/health')return{ok:true,admin:!!ADMIN_KEY};
  if(m==='GET'&&p==='/api/state')return state(r);
@@ -151,11 +152,10 @@ async function route(r,m,p,b){let x;
   if(m==='POST'&&(x=p.match(/^\/api\/admin\/users\/(\w+)\/(suspend|reactivate|delete)$/))){const t=db.users.find(v=>v.id===x[1]&&live(v));if(!t)throw new E('Cuenta no encontrada.',404);const now=new Date().toISOString();
    if(x[2]==='suspend'){t.status='suspended';t.suspendedAt=now;t.suspendedReason=clean(b.reason).slice(0,200);save();return{ok:1}} // el motivo es interno: nunca sale en la API pública
    if(x[2]==='reactivate'){t.status='active';delete t.suspendedAt;delete t.suspendedReason;t.reactivatedAt=now;save();return{ok:1}}
-   // Eliminación definitiva: la cuenta y su PIN dejan de existir y el alias queda libre, pero ideas, apoyos, comentarios y respuestas se CONSERVAN (anónimos)
-   // para no romper relaciones ni estadísticas. El registro queda como "lápida" (status 'deleted') sin PIN, sin sesión y sin alias.
+   // Eliminación definitiva: se borra la cuenta y TODO su historial (ideas con sus comentarios y apoyos, sus comentarios, sus apoyos y sus respuestas). Las estadísticas se recalculan solas. No se puede deshacer.
    if(norm(b.confirm)!==norm(t.name))throw new E('Para eliminar la cuenta escribe exactamente su nombre.');
-   const L='Cuenta eliminada';db.ideas.forEach(i=>{if(i.userId===t.id)i.name=L});db.comments.forEach(c=>{if(c.userId===t.id)c.name=L});db.answers.forEach(a=>{if(a.userId===t.id)a.name=L});
-   t.name=L;t.status='deleted';t.deletedAt=now;delete t.pin;delete t.salt;delete t.suspendedReason;delete t.suspendedAt;t.token=crypto.randomBytes(16).toString('hex');save();return{ok:1}}
+   db.ideas=db.ideas.filter(i=>i.userId!==t.id);const keep=new Set(db.ideas.map(i=>i.id));db.comments=db.comments.filter(c=>c.userId!==t.id&&keep.has(c.ideaId));
+   db.ideas.forEach(i=>{i.supports=i.supports.filter(x=>x!==t.id)});db.answers=db.answers.filter(a=>a.userId!==t.id);db.users=db.users.filter(x=>x.id!==t.id);save();return{ok:1}}
   if(m==='POST'&&p==='/api/admin/groups'){const g=clean(b.group);if(!/^\d{4}$/.test(g)||!SEMESTERS.includes(g[0]))throw new E('Grupo inválido (4 dígitos; semestres '+SEMESTERS.join(', ')+').');if(!db.groups.includes(g))db.groups.push(g);db.groups.sort();save();return{ok:1}}
   if(m==='POST'&&p==='/api/admin/badwords'){const w=norm(b.word);if(!/^[a-z0-9]{2,30}$/.test(w))throw new E('Escribe una sola palabra (2 a 30 letras o números).');if(!db.badWords.includes(w))db.badWords.push(w);save();return{ok:1}}
   if(m==='DELETE'&&(x=p.match(/^\/api\/admin\/badwords\/(\w+)$/))){db.badWords=db.badWords.filter(w=>w!==x[1]);save();return{ok:1}}

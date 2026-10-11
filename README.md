@@ -117,3 +117,9 @@ Simula N alumnos a la vez y compara lo confirmado por el servidor con lo guardad
 **Suspender:** bloquea inicio de sesión y toda acción en el servidor (aunque la sesión siga abierta). El motivo es interno y nunca sale en la API pública.
 **Eliminar definitivamente:** borra cuenta y PIN y libera el nombre; ideas, comentarios, apoyos y respuestas se conservan como "Cuenta eliminada" para no alterar estadísticas.
 **Editar encuestas con respuestas:** se puede corregir texto o añadir opciones; si cambia el tipo o quitas/renombras opciones, se crea una versión nueva y la original se conserva oculta.
+
+## Cambios V1.7
+- **Conecta con nosotros:** botones a los perfiles. Los enlaces se pegan en `public/app.js`, en la constante `LINKS` (arriba del archivo). Vacío = botón "Próximamente".
+- **Eliminar definitivamente:** borra la cuenta y TODO su historial (ideas con sus comentarios y apoyos, comentarios, apoyos y respuestas). No se puede deshacer.
+- **Suspender:** mientras dure, su contenido se oculta y no cuenta en estadísticas; al reactivar vuelve.
+- Más palabras en la lista de lenguaje bloqueado.
