@@ -104,3 +104,16 @@ Simula N alumnos a la vez y compara lo confirmado por el servidor con lo guardad
 - Grupos incluidos: 1101-1103, 3101-3103 y 5101-5103 (más desde Administración). Semestres 2/4/6: `SEMESTERS` en `server.js`.
 - Filtro de lenguaje: lista base en `server.js` (`BAD`); se amplía en Administración → Lenguaje bloqueado.
 - Fotos: URLs externas (WebP optimizadas); videos: enlaces de YouTube. No hay subida de archivos.
+
+## Actualización V1.6 (identidad COBAEH, cuentas y encuestas)
+
+**Cómo actualizar en Render sin perder datos:**
+1. En Administración → *Grupos y configuración* → **Descargar respaldo** (guárdalo en privado).
+2. Sube a GitHub los archivos cambiados: `server.js`, `README.md`, `public/index.html`, `public/app.js`, `public/style.css`. Render redeploya solo.
+3. Al arrancar con datos del esquema anterior, el servidor guarda una copia automática (en Postgres: tabla `app_state_backup`; en archivo: `data.json.bak-v16`) y migra sin borrar nada.
+
+**Qué cambió:** logo de huella de jaguar + "PLANTEL ALMOLOYA"; textos de acceso nuevos; cuentas con estado (activa/suspendida/eliminada); administración en 7 bloques; encuestas de 4 tipos (única, Sí/No, escala 1–5 con etiquetas, múltiple) con borrador/publicada/oculta, edición segura y resultados por tipo; 4 encuestas iniciales sembradas **como borrador** (una sola vez, nunca duplicadas).
+
+**Suspender:** bloquea inicio de sesión y toda acción en el servidor (aunque la sesión siga abierta). El motivo es interno y nunca sale en la API pública.
+**Eliminar definitivamente:** borra cuenta y PIN y libera el nombre; ideas, comentarios, apoyos y respuestas se conservan como "Cuenta eliminada" para no alterar estadísticas.
+**Editar encuestas con respuestas:** se puede corregir texto o añadir opciones; si cambia el tipo o quitas/renombras opciones, se crea una versión nueva y la original se conserva oculta.
