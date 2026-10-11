@@ -58,3 +58,5 @@ button.sel{background:var(--g);color:#06140c}.sub{border-top:1px solid var(--b);
 .sc5{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}.sc5 button{flex-direction:column;min-height:56px;padding:4px 2px;font-size:12px;line-height:1.1;white-space:normal;text-align:center}.sc5 button b{font-size:18px}
 .sclab{font-size:12px;color:var(--m);display:grid;grid-template-columns:repeat(5,1fr);gap:4px;text-align:center}
 .tag.s{background:#17432b;color:#9be0b4}.tag.h{background:#3a2f0a}.tag.d{background:#25392d;color:var(--m)}
+
+.social{display:grid;gap:8px}.social .btn,.social button{width:100%;text-align:center}
