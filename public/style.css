@@ -45,3 +45,16 @@ button.sel{background:var(--g);color:#06140c}.sub{border-top:1px solid var(--b);
 .scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.scale button{padding:0}.chk{display:flex;align-items:center;gap:8px;font-weight:600;margin:6px 0 12px}.chk input{width:24px;min-height:24px;margin:0}
 @media(max-width:359px){.logo svg{width:88px;height:19.5px}.tl{font-size:8px;letter-spacing:0}#mb{padding:0 11px;min-width:44px}.bar{gap:6px;padding:8px 8px}}
 .tl{font-weight:500;font-size:9px}
+
+/* V1.6 identidad COBAEH */
+.logo{flex-direction:row;align-items:center;gap:8px;line-height:1}.logo .paw{width:34px;height:34px;flex:none}.lt{display:flex;flex-direction:column;gap:3px}.lt b{font-size:19px;letter-spacing:1.2px;color:var(--y);font-weight:800}.lt small{font-size:8.5px;letter-spacing:1.4px;color:var(--m);font-weight:600;white-space:nowrap}
+.hp{width:56px;height:56px;display:block;margin:0 auto 6px}.pl{font-size:12px;letter-spacing:3px;color:var(--m);font-weight:600;margin-bottom:6px}
+@media(max-width:359px){.logo .paw{width:28px;height:28px}.lt b{font-size:16px}.lt small{font-size:7px;letter-spacing:.8px}}
+.ablk{background:var(--c);border:1px solid var(--b);border-radius:var(--r);margin:10px 0}.ablk>summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:700;font-size:1.05rem;min-height:48px;display:flex;align-items:center;justify-content:space-between}.ablk>summary::-webkit-details-marker{display:none}.ablk>summary:after{content:'▾';color:var(--g)}.ablk[open]>summary:after{content:'▴'}.ablk>.in{padding:0 14px 14px}
+.ucard{border:1px solid var(--b);border-radius:14px;padding:12px;margin:8px 0;background:#0f1a14}.ucard .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap}.ucard b{overflow-wrap:anywhere}.st-a{color:var(--g);font-weight:700}.st-s{color:#ffb4b4;font-weight:700}.st-d{color:var(--y);font-weight:700}
+.ucard .row button,.scard .row button{flex:1;min-width:120px}.dgr{border-color:#c0504d;color:#ffb4b4;background:transparent}.dgr.f{background:#7a2626;color:#fff;border-color:#7a2626}
+.scard{border:1px solid var(--b);border-radius:14px;padding:12px;margin:8px 0;background:#0f1a14}.scard h4{margin:.2em 0;overflow-wrap:anywhere}
+.warn{background:#3a2f0a;border-radius:12px;padding:10px 12px;margin:8px 0;color:#f3dc8a}.sdisabled{opacity:.6}.opt-row{display:flex;gap:6px;align-items:center}.opt-row input{margin:4px 0}.opt-row button{min-height:44px;padding:0 12px;flex:none}
+.sc5{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}.sc5 button{flex-direction:column;min-height:56px;padding:4px 2px;font-size:12px;line-height:1.1;white-space:normal;text-align:center}.sc5 button b{font-size:18px}
+.sclab{font-size:12px;color:var(--m);display:grid;grid-template-columns:repeat(5,1fr);gap:4px;text-align:center}
+.tag.s{background:#17432b;color:#9be0b4}.tag.h{background:#3a2f0a}.tag.d{background:#25392d;color:var(--m)}
