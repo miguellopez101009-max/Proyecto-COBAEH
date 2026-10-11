@@ -1,7 +1,7 @@
 const $=s=>document.querySelector(s),H=(t,a={},...c)=>{const e=document.createElement(t);for(const k in a)k in e?e[k]=a[k]:e.setAttribute(k,a[k]);e.append(...c);return e};
 const S=['inicio','proyecto','actividades','participa'],X=['admin','info','futuro'],L={inicio:'Inicio',proyecto:'Proyecto',actividades:'Actividades y evidencias',participa:'Participa'};
 // ===== ENLACES DE "CONECTA CON NOSOTROS": cada enlace debe empezar con https://. Si queda vacío, el botón se muestra como "Próximamente".
-const LINKS={integrantes:[['Ángel Miguel','https://www.instagram.com/am.leugim'],['Daniel','https://www.instagram.com/__dany.cc'],['Omar','https://www.instagram.com/miguelitouwi']],plantel:'https://www.facebook.com/share/1BxLBFQwTX/',sitios:''};
+const LINKS={integrantes:[['Ángel Miguel','https://www.instagram.com/am.leugim'],['Daniel','https://www.instagram.com/__dany.cc'],['Omar','https://www.instagram.com/miguelitouwi']],plantel:'https://www.facebook.com/share/1BxLBFQwTX/',sitios:'https://www.instagram.com/proyecto_cobahe_3102'};
 let me=JSON.parse(localStorage.pecUser||'null'),st=null,AK=sessionStorage.ak||'';
 async function api(p,m='GET',b,admin){const h={'Content-Type':'application/json'};if(me){h['x-user-id']=me.id;h['x-token']=me.token}if(admin)h['x-admin-key']=AK;let r,j;
  try{r=await fetch('/api'+p,{method:m,headers:h,body:b?JSON.stringify(b):undefined})}catch{throw new Error('No se pudo conectar con el servidor. Revisa tu internet o que el servicio esté activo (en Render gratis puede tardar ~1 min en despertar).')}
@@ -165,4 +165,4 @@ addEventListener('hashchange',go);go();
 
 // Conecta con nosotros: botones a los perfiles
 (()=>{const box=$('#social');if(!box)return;const ok=u=>/^https:\/\//.test(u||''),btn=(ic,t,u)=>ok(u)?H('a',{className:'btn',href:u,target:'_blank',rel:'noopener noreferrer',textContent:ic+' '+t}):H('button',{className:'o',type:'button',disabled:true,textContent:ic+' '+t+' · Próximamente'});
- box.replaceChildren(H('p',{className:'m',style:'margin:0'},'👥 Integrantes del equipo (Instagram)'),...LINKS.integrantes.map(([n,u])=>btn('📸',n,u)),H('p',{className:'m',style:'margin:8px 0 0'},'🏫 Plantel y sitios oficiales'),btn('📘','Facebook del plantel',LINKS.plantel),btn('🌐','Sitio oficial',LINKS.sitios))})();
+ box.replaceChildren(H('p',{className:'m',style:'margin:0'},'👥 Integrantes del equipo (Instagram)'),...LINKS.integrantes.map(([n,u])=>btn('📸',n,u)),H('p',{className:'m',style:'margin:8px 0 0'},'🏫 Plantel y sitios oficiales'),btn('📘','Facebook del plantel',LINKS.plantel),btn('🌐','Sitio oficial (Instagram)',LINKS.sitios))})();
